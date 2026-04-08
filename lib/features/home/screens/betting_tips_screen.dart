@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../core/utils/currency_formatter.dart';
 import '../providers/betting_tips_provider.dart';
 import '../../auth/providers/auth_provider.dart';
 
@@ -18,126 +17,170 @@ class BettingTipsScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppTheme.background,
-      body: CustomScrollView(
-        slivers: [
-          const SliverAppBar(
-            title: Text('Betting Tips'),
-            floating: true,
-            backgroundColor: AppTheme.background,
+      appBar: AppBar(
+        title: const Text('Betting Tips'),
+        backgroundColor: AppTheme.background,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: () => ref.invalidate(bettingTipsProvider),
           ),
-
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // VIP Banner (if not VIP)
-                  if (!isVip)
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [AppTheme.accent.withOpacity(0.2), AppTheme.primary.withOpacity(0.2)],
-                        ),
-                        borderRadius: BorderRadius.circular(12),
+        ],
+      ),
+      body: tipsAsync.when(
+        data: (tips) {
+          if (tips.isEmpty) {
+            return ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.7,
+                  child: const Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.trending_up_rounded, size: 64, color: AppTheme.textSecondary),
+                      SizedBox(height: 16),
+                      Text(
+                        'No betting tips available',
+                        style: TextStyle(color: AppTheme.textSecondary),
                       ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.star_rounded, color: AppTheme.accent, size: 32),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Upgrade to VIP',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                Text(
-                                  'Get premium tips with 75% accuracy',
-                                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                                ),
-                              ],
-                            ),
-                          ),
-                          ElevatedButton(
-                            onPressed: () => context.push('/vip'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.accent,
-                              foregroundColor: AppTheme.primary,
-                            ),
-                            child: const Text('Upgrade'),
-                          ),
-                        ],
+                    ],
+                  ),
+                ),
+              ],
+            );
+          }
+
+          final hotTips = tips.where((t) => t.confidence > 70).toList();
+          final regularTips = tips.where((t) => t.confidence <= 70).toList();
+
+          return RefreshIndicator(
+            onRefresh: () async => ref.invalidate(bettingTipsProvider),
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                if (!isVip) ...[
+                  const _VipBanner(),
+                  const SizedBox(height: 16),
+                ],
+                if (hotTips.isNotEmpty) ...[
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      '🔥 Today\'s Hot Tips',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
                       ),
-                    ),
-
-                  const SizedBox(height: 20),
-
-                  // Today's Hot Tips Section
-                  const Text(
-                    '🔥 Today\'s Hot Tips',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
                     ),
                   ),
                   const SizedBox(height: 12),
+                  ...hotTips.map((tip) => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    child: _TipCard(tip: tip, isVip: isVip),
+                  )),
+                  const SizedBox(height: 8),
                 ],
+                if (regularTips.isNotEmpty) ...[
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      '📊 More Predictions',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ...regularTips.map((tip) => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    child: _TipCard(tip: tip, isVip: isVip),
+                  )),
+                  const SizedBox(height: 8),
+                ],
+                const SizedBox(height: 40),
+              ],
+            ),
+          );
+        },
+        loading: () => const Center(
+          child: CircularProgressIndicator(color: AppTheme.primary),
+        ),
+        error: (error, _) => Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline_rounded, size: 64, color: AppTheme.danger),
+              const SizedBox(height: 16),
+              const Text(
+                'Failed to load tips',
+                style: TextStyle(color: AppTheme.textSecondary),
               ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => ref.invalidate(bettingTipsProvider),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _VipBanner extends StatelessWidget {
+  const _VipBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [AppTheme.accent.withOpacity(0.2), AppTheme.primary.withOpacity(0.2)],
+        ),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.star_rounded, color: AppTheme.accent, size: 32),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Upgrade to VIP',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  'Get premium tips with 75% accuracy',
+                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                ),
+              ],
             ),
           ),
-
-          tipsAsync.when(
-            data: (tips) {
-              final hotTips = tips.where((t) => t.confidence > 70).toList();
-              final regularTips = tips.where((t) => t.confidence <= 70).toList();
-
-              return SliverList(
-                delegate: SliverChildListDelegate([
-                  // Hot tips
-                  if (hotTips.isNotEmpty)
-                    Column(
-                      children: [
-                        ...hotTips.map((tip) => BettingTipCard(
-                          tip: tip,
-                          isVip: isVip,
-                          onTap: () => context.push('/match/${tip.matchId}'),
-                        )),
-                        const SizedBox(height: 20),
-                        const Text(
-                          '📊 More Predictions',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-                    ),
-
-                  // Regular tips
-                  ...regularTips.map((tip) => BettingTipCard(
-                    tip: tip,
-                    isVip: isVip,
-                    onTap: () => context.push('/match/${tip.matchId}'),
-                  )),
-
-                  const SizedBox(height: 80),
-                ]),
-              );
-            },
-            loading: () => const SliverFillRemaining(
-              child: Center(child: CircularProgressIndicator()),
-            ),
-            error: (_, __) => const SliverFillRemaining(
-              child: Center(child: Text('Failed to load tips')),
+          const SizedBox(width: 8),
+          // FIX: constrain the button width so it doesn't go infinite in a Row
+          SizedBox(
+            width: 100,
+            child: ElevatedButton(
+              onPressed: () => context.push('/vip'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.accent,
+                foregroundColor: AppTheme.primary,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+              child: const Text('Upgrade', overflow: TextOverflow.ellipsis),
             ),
           ),
         ],
@@ -146,174 +189,168 @@ class BettingTipsScreen extends ConsumerWidget {
   }
 }
 
-class BettingTipCard extends StatelessWidget {
+class _TipCard extends StatelessWidget {
   final BettingTip tip;
   final bool isVip;
-  final VoidCallback onTap;
 
-  const BettingTipCard({
-    super.key,
+  const _TipCard({
     required this.tip,
     required this.isVip,
-    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final isLocked = tip.isVipOnly && !isVip;
 
-    return GestureDetector(
-      onTap: isLocked ? null : onTap,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceCard,
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceCard,
+        borderRadius: BorderRadius.circular(12),
+        border: tip.confidence > 80
+            ? Border.all(color: AppTheme.accent, width: 1)
+            : null,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: isLocked ? null : () => context.push('/match/${tip.matchId}'),
           borderRadius: BorderRadius.circular(12),
-          border: tip.confidence > 80
-              ? Border.all(color: AppTheme.accent, width: 1)
-              : null,
-        ),
-        child: Column(
-          children: [
-            // Match info
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
               children: [
-                Expanded(
-                  child: Text(
-                    '${tip.homeTeam} vs ${tip.awayTeam}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (tip.isVipOnly)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: AppTheme.accent.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.star_rounded, color: AppTheme.accent, size: 12),
-                        SizedBox(width: 2),
-                        Text('VIP', style: TextStyle(color: AppTheme.accent, fontSize: 10)),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // Tip and odds
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Prediction', style: TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
-                      const SizedBox(height: 4),
-                      Text(
-                        tip.tipType,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${tip.homeTeam} vs ${tip.awayTeam}',
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (tip.isVipOnly)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppTheme.accent.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'VIP',
+                          style: TextStyle(
+                            color: AppTheme.accent,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
-                    ],
-                  ),
+                  ],
                 ),
-                Container(
-                  width: 1,
-                  height: 40,
-                  color: AppTheme.divider,
-                ),
-                Expanded(
-                  child: Column(
-                    children: [
-                      const Text('Odds', style: TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
-                      const SizedBox(height: 4),
-                      Text(
-                        KenyanCurrencyFormatter.formatOdds(tip.odds),
-                        style: const TextStyle(
-                          color: AppTheme.accent,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  width: 1,
-                  height: 40,
-                  color: AppTheme.divider,
-                ),
-                Expanded(
-                  child: Column(
-                    children: [
-                      const Text('Confidence', style: TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
-                      const SizedBox(height: 4),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          const Text(
+                            'Prediction',
+                            style: TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            tip.tipType,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(width: 1, height: 40, color: AppTheme.divider),
+                    Expanded(
+                      child: Column(
+                        children: [
+                          const Text(
+                            'Odds',
+                            style: TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            tip.odds.toStringAsFixed(2),
+                            style: const TextStyle(
+                              color: AppTheme.accent,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(width: 1, height: 40, color: AppTheme.divider),
+                    Expanded(
+                      child: Column(
+                        children: [
+                          const Text(
+                            'Confidence',
+                            style: TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+                          ),
+                          const SizedBox(height: 4),
                           Text(
                             '${tip.confidence.toStringAsFixed(0)}%',
                             style: TextStyle(
-                              color: _getConfidenceColor(tip.confidence),
+                              color: tip.confidence > 70 ? AppTheme.accent : AppTheme.primaryLight,
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
                         ],
                       ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-
-            if (isLocked) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppTheme.background,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.lock_rounded, color: AppTheme.textSecondary, size: 16),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'VIP only - Upgrade to unlock',
-                      style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                    ),
-                    const Spacer(),
-                    TextButton(
-                      onPressed: () => context.push('/vip'),
-                      child: const Text('Upgrade'),
                     ),
                   ],
                 ),
-              ),
-            ],
-          ],
+                if (isLocked) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.background,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.lock_rounded, color: AppTheme.textSecondary, size: 16),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'VIP only - Upgrade to unlock',
+                            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                          ),
+                        ),
+                        // FIX: also constrain this button
+                        SizedBox(
+                          width: 90,
+                          child: TextButton(
+                            onPressed: () => context.push('/vip'),
+                            child: const Text('Upgrade'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );
-  }
-
-  Color _getConfidenceColor(double confidence) {
-    if (confidence >= 80) return AppTheme.accent;
-    if (confidence >= 60) return AppTheme.primaryLight;
-    return AppTheme.textSecondary;
   }
 }

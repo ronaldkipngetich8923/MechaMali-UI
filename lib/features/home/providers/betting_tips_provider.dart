@@ -38,15 +38,40 @@ class BettingTip {
   );
 }
 
+// Add cache provider to prevent unnecessary refetching
+final bettingTipsCacheProvider = StateProvider<List<BettingTip>?>((ref) => null);
+
+// Add refresh trigger provider
+final bettingTipsRefreshProvider = StateProvider<bool>((ref) => false);
+
 final bettingTipsProvider = FutureProvider<List<BettingTip>>((ref) async {
+  // Check if we should refresh
+  final shouldRefresh = ref.watch(bettingTipsRefreshProvider);
+  final cached = ref.watch(bettingTipsCacheProvider);
+
+  // Return cached data if available and not refreshing
+  if (!shouldRefresh && cached != null) {
+    return cached;
+  }
+
   final dio = ref.watch(dioProvider);
   try {
     final response = await dio.get('/betting/tips');
     final List<dynamic> data = response.data as List<dynamic>;
-    return data.map((e) => BettingTip.fromJson(e as Map<String, dynamic>)).toList();
+    final tips = data.map((e) => BettingTip.fromJson(e as Map<String, dynamic>)).toList();
+
+    // Update cache
+    ref.read(bettingTipsCacheProvider.notifier).state = tips;
+    // Reset refresh trigger
+    ref.read(bettingTipsRefreshProvider.notifier).state = false;
+
+    return tips;
   } catch (e) {
-    // Return mock data for development
-    return _getMockTips();
+    // Return mock data only if no cache exists
+    if (cached != null) return cached;
+    final mockTips = _getMockTips();
+    ref.read(bettingTipsCacheProvider.notifier).state = mockTips;
+    return mockTips;
   }
 });
 
