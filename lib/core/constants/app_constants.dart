@@ -2,7 +2,7 @@ class AppConstants {
   AppConstants._();
 
   // API
-  static const String baseUrl = 'http://192.168.101.92:51463/api';
+  static const String baseUrl = 'http://192.168.100.24:51463/api';
   static const Duration connectTimeout = Duration(seconds: 10);
   static const Duration receiveTimeout = Duration(seconds: 15);
 
