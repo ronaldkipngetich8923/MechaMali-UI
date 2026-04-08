@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/models/match_model.dart';
 import '../../auth/providers/auth_provider.dart';
-import '../screens/betting_tips_screen.dart'; // We'll create this
+import '../providers/matches_provider.dart';
 
 class MainScaffold extends ConsumerWidget {
   final Widget child;
@@ -63,32 +64,20 @@ class MainScaffold extends ConsumerWidget {
 
               const SizedBox(height: 8),
 
-              // Main Navigation Items
               _DrawerItem(
                 icon: Icons.home_rounded,
                 label: 'Home',
-                onTap: () {
-                  Navigator.pop(context);
-                  context.go('/home');
-                },
+                onTap: () { Navigator.pop(context); context.go('/home'); },
               ),
-
               _DrawerItem(
                 icon: Icons.trending_up_rounded,
                 label: 'Betting Tips',
-                onTap: () {
-                  Navigator.pop(context);
-                  context.push('/betting-tips');
-                },
+                onTap: () { Navigator.pop(context); context.push('/betting-tips'); },
               ),
-
               _DrawerItem(
                 icon: Icons.analytics_rounded,
                 label: 'My Performance',
-                onTap: () {
-                  Navigator.pop(context);
-                  context.push('/betting-stats');
-                },
+                onTap: () { Navigator.pop(context); context.push('/betting-stats'); },
               ),
 
               const Divider(),
@@ -97,46 +86,27 @@ class MainScaffold extends ConsumerWidget {
                 icon: Icons.star_rounded,
                 label: 'Go VIP',
                 highlight: true,
-                onTap: () {
-                  Navigator.pop(context);
-                  context.push('/vip');
-                },
+                onTap: () { Navigator.pop(context); context.push('/vip'); },
               ),
-
               _DrawerItem(
                 icon: Icons.person_rounded,
                 label: 'Profile',
-                onTap: () {
-                  Navigator.pop(context);
-                  context.go('/profile');
-                },
+                onTap: () { Navigator.pop(context); context.go('/profile'); },
               ),
-
               _DrawerItem(
                 icon: Icons.bookmark_rounded,
                 label: 'My Watchlist',
-                onTap: () {
-                  Navigator.pop(context);
-                  context.push('/watchlist');
-                },
+                onTap: () { Navigator.pop(context); context.push('/watchlist'); },
               ),
-
               _DrawerItem(
                 icon: Icons.notifications_rounded,
                 label: 'Notifications',
-                onTap: () {
-                  Navigator.pop(context);
-                  context.push('/notifications');
-                },
+                onTap: () { Navigator.pop(context); context.push('/notifications'); },
               ),
-
               _DrawerItem(
                 icon: Icons.help_outline_rounded,
                 label: 'Betting Tutorial',
-                onTap: () {
-                  Navigator.pop(context);
-                  context.push('/tutorial');
-                },
+                onTap: () { Navigator.pop(context); context.push('/tutorial'); },
               ),
 
               const Divider(),
@@ -176,7 +146,7 @@ class MainScaffold extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.search_rounded, color: Colors.white),
-            onPressed: () => _showSearchDialog(context),
+            onPressed: () => _showSearchDialog(context, ref),
           ),
           IconButton(
             icon: const Icon(Icons.star_rounded, color: AppTheme.accent),
@@ -189,10 +159,13 @@ class MainScaffold extends ConsumerWidget {
     );
   }
 
-  void _showSearchDialog(BuildContext context) {
+  void _showSearchDialog(BuildContext context, WidgetRef ref) {
+    // FIX: pass the current matches list into the dialog so it can filter
+    final matchesAsync = ref.read(matchesProvider);
+    final matches = matchesAsync.valueOrNull ?? [];
     showDialog(
       context: context,
-      builder: (context) => const SearchDialog(),
+      builder: (context) => SearchDialog(allMatches: matches),
     );
   }
 }
@@ -213,8 +186,7 @@ class _DrawerItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      leading: Icon(icon,
-          color: highlight ? AppTheme.accent : AppTheme.textSecondary),
+      leading: Icon(icon, color: highlight ? AppTheme.accent : AppTheme.textSecondary),
       title: Text(label,
           style: TextStyle(
             color: highlight ? AppTheme.accent : AppTheme.textPrimary,
@@ -225,39 +197,151 @@ class _DrawerItem extends StatelessWidget {
   }
 }
 
+// ---------------------------------------------------------------------------
+// FIX: SearchDialog — was a stub that closed on submit with no action.
+// Now filters the loaded matches list by team name or league and shows
+// tappable results that navigate to the match detail screen.
+// ---------------------------------------------------------------------------
 class SearchDialog extends StatefulWidget {
-  const SearchDialog({super.key});
+  final List<MatchModel> allMatches;
+
+  const SearchDialog({super.key, required this.allMatches});
 
   @override
   State<SearchDialog> createState() => _SearchDialogState();
 }
 
 class _SearchDialogState extends State<SearchDialog> {
-  final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _controller = TextEditingController();
+  List<MatchModel> _results = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _results = widget.allMatches;
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onQueryChanged(String query) {
+    final q = query.trim().toLowerCase();
+    setState(() {
+      _results = q.isEmpty
+          ? widget.allMatches
+          : widget.allMatches.where((m) {
+        return m.homeTeam.toLowerCase().contains(q) ||
+            m.awayTeam.toLowerCase().contains(q) ||
+            m.league.toLowerCase().contains(q);
+      }).toList();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Dialog(
+      backgroundColor: AppTheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _searchController,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 48),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Search field
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: TextField(
+              controller: _controller,
               autofocus: true,
-              decoration: const InputDecoration(
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
                 hintText: 'Search teams, leagues...',
-                prefixIcon: Icon(Icons.search_rounded),
+                prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.textSecondary),
+                suffixIcon: _controller.text.isNotEmpty
+                    ? IconButton(
+                  icon: const Icon(Icons.clear_rounded, color: AppTheme.textSecondary),
+                  onPressed: () {
+                    _controller.clear();
+                    _onQueryChanged('');
+                  },
+                )
+                    : null,
               ),
-              onSubmitted: (value) {
-                // Implement search
-                Navigator.pop(context);
-              },
+              onChanged: _onQueryChanged,
             ),
-          ],
-        ),
+          ),
+
+          // Results
+          if (widget.allMatches.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('No matches loaded yet.',
+                  style: TextStyle(color: AppTheme.textSecondary)),
+            )
+          else if (_results.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('No matches found.',
+                  style: TextStyle(color: AppTheme.textSecondary)),
+            )
+          else
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 360),
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: const EdgeInsets.only(bottom: 12),
+                itemCount: _results.length,
+                separatorBuilder: (_, __) =>
+                const Divider(color: AppTheme.divider, height: 1),
+                itemBuilder: (_, i) {
+                  final m = _results[i];
+                  return ListTile(
+                    leading: CircleAvatar(
+                      radius: 16,
+                      backgroundColor: AppTheme.surfaceCard,
+                      backgroundImage: m.homeTeamLogo.isNotEmpty
+                          ? NetworkImage(m.homeTeamLogo)
+                          : null,
+                      child: m.homeTeamLogo.isEmpty
+                          ? const Icon(Icons.sports_soccer,
+                          size: 14, color: AppTheme.textSecondary)
+                          : null,
+                    ),
+                    title: Text(
+                      '${m.homeTeam} vs ${m.awayTeam}',
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                    ),
+                    subtitle: Text(
+                      m.league,
+                      style: const TextStyle(
+                          color: AppTheme.textSecondary, fontSize: 11),
+                    ),
+                    trailing: m.isLive
+                        ? Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppTheme.danger.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text('LIVE',
+                          style: TextStyle(
+                              color: AppTheme.danger,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700)),
+                    )
+                        : null,
+                    onTap: () {
+                      Navigator.pop(context);
+                      context.push('/match/${m.id}');
+                    },
+                  );
+                },
+              ),
+            ),
+        ],
       ),
     );
   }

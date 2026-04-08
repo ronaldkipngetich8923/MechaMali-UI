@@ -1,13 +1,12 @@
 // lib/features/home/widgets/betting_insight_card.dart
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:mechamali/core/models/match_model.dart';
-
 import 'package:mechamali/core/models/match_model.dart';
 import 'package:mechamali/core/theme/app_theme.dart';
 
 class BettingInsightCard extends StatelessWidget {
-  late final MatchModel match;
+  final MatchModel match; // FIX: was `late final` with no constructor — runtime crash
+
+  const BettingInsightCard({super.key, required this.match});
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +18,24 @@ class BettingInsightCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // Existing match info...
+          // Match header
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  match.league,
+                  style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+                ),
+                Text(
+                  '${match.homeTeam} vs ${match.awayTeam}',
+                  style: const TextStyle(
+                      color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ),
 
           // Betting-specific insights
           Container(

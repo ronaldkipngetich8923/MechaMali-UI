@@ -1,6 +1,6 @@
 import 'dart:convert';
+import 'dart:developer' show log; // FIX: was importing cupertino just for debugPrint
 import 'package:dio/dio.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../../core/models/user_model.dart';
@@ -15,11 +15,12 @@ class AuthState {
 
   bool get isAuthenticated => user != null;
 
-  AuthState copyWith({UserModel? user, bool? isLoading, String? error}) => AuthState(
-    user: user ?? this.user,
-    isLoading: isLoading ?? this.isLoading,
-    error: error,
-  );
+  AuthState copyWith({UserModel? user, bool? isLoading, String? error}) =>
+      AuthState(
+        user: user ?? this.user,
+        isLoading: isLoading ?? this.isLoading,
+        error: error,
+      );
 }
 
 class AuthNotifier extends StateNotifier<AuthState> {
@@ -31,10 +32,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> sendOtp(String phone, String name) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final res  = await _dio.post('/auth/send-otp', data: {'phone': phone, 'name': name});
+      final res = await _dio.post('/auth/send-otp', data: {'phone': phone, 'name': name});
       final body = res.data as Map<String, dynamic>;
       if (body['isSuccess'] == false) {
-        state = state.copyWith(isLoading: false, error: body['error'] as String? ?? 'Failed to send OTP');
+        state = state.copyWith(
+            isLoading: false,
+            error: body['error'] as String? ?? 'Failed to send OTP');
         return;
       }
       state = state.copyWith(isLoading: false);
@@ -46,10 +49,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<bool> verifyOtp(String phone, String code) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final res  = await _dio.post('/auth/verify-otp', data: {'phone': phone, 'code': code});
+      final res =
+      await _dio.post('/auth/verify-otp', data: {'phone': phone, 'code': code});
       final body = res.data as Map<String, dynamic>;
 
-      // Response is wrapped: { isSuccess: true, data: { accessToken, refreshToken, user } }
+      // Response: { isSuccess: true, data: { accessToken, refreshToken, user } }
       final payload = body['data'] as Map<String, dynamic>;
 
       final accessToken  = payload['accessToken']  as String;
@@ -61,9 +65,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
       state = state.copyWith(isLoading: false, user: user);
       return true;
-
     } on DioException catch (e) {
-      debugPrint('verifyOtp error: ${e.response?.data}');
+      log('verifyOtp error: ${e.response?.data}', name: 'AuthNotifier');
       state = state.copyWith(isLoading: false, error: _parseError(e));
       return false;
     }
@@ -78,14 +81,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final parts = token.split('.');
       if (parts.length != 3) return;
 
-      // Pad base64 to valid length
       var payload = parts[1].replaceAll('-', '+').replaceAll('_', '/');
       while (payload.length % 4 != 0) payload += '=';
 
       final decoded = utf8.decode(base64.decode(payload));
       final claims  = jsonDecode(decoded) as Map<String, dynamic>;
 
-      // Check token expiry
       final exp = claims['exp'] as int?;
       if (exp != null &&
           DateTime.fromMillisecondsSinceEpoch(exp * 1000).isBefore(DateTime.now())) {
@@ -114,7 +115,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final data = res.data as Map<String, dynamic>;
       await _storage.write(key: 'access_token',  value: data['accessToken']  as String);
       await _storage.write(key: 'refresh_token', value: data['refreshToken'] as String);
-      state = state.copyWith(user: UserModel.fromJson(data['user'] as Map<String, dynamic>));
+      state = state.copyWith(
+          user: UserModel.fromJson(data['user'] as Map<String, dynamic>));
     } catch (_) {
       await _storage.deleteAll();
     }
